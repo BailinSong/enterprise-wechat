@@ -5,6 +5,8 @@ import org.apache.http.NameValuePair
 import org.apache.http.client.ClientProtocolException
 import org.apache.http.client.entity.UrlEncodedFormEntity
 import org.apache.http.client.methods.*
+import org.apache.http.entity.AbstractHttpEntity
+import org.apache.http.entity.ByteArrayEntity
 import org.apache.http.entity.ContentType
 import org.apache.http.entity.StringEntity
 import org.apache.http.impl.client.HttpClients
@@ -27,7 +29,7 @@ import java.util.*
  * @throws IOException
  */
 @Throws(ClientProtocolException::class, IOException::class)
-private fun http(method: HttpRequestBase, url: String, map: Map<String, String>?, encoding: String="utf-8"): String {
+private fun http(method: HttpRequestBase, url: String, map: Map<String, String>?, encoding: String="utf-8",head: Array<Pair<String,String>>?=null): String {
     var result = ""
 
     // 创建httpclient对象
@@ -51,8 +53,16 @@ private fun http(method: HttpRequestBase, url: String, map: Map<String, String>?
 
     // 设置header信息
     // 指定报文头【Content-type】、【User-Agent】
+
+
     method.setHeader("Content-type", "application/x-www-form-urlencoded")
     method.setHeader("User-Agent", "Mozilla/4.0 (compatible; MSIE 5.0; Windows NT; DigExt)")
+
+    head?.forEach {
+        it?.apply {
+            method.setHeader(this.first,this.second)
+        }
+    }
 
     // 执行请求操作，并拿到结果（同步阻塞）
     val response = httpClient.execute(method)
@@ -78,9 +88,24 @@ private fun http(method: HttpRequestBase, url: String, map: Map<String, String>?
  * @throws IOException
  */
 @Throws(ClientProtocolException::class, IOException::class)
-private fun http(method: HttpRequestBase, url: String, json: String, encoding: String="utf-8"): String {
+private fun http(method: HttpRequestBase, url: String, json: String, encoding: String="utf-8",head:Array<Pair<String,String>>?=null): String {
 
-    println(json)
+    return http(method,url,json,ContentType.APPLICATION_JSON,encoding,head)
+
+}
+
+/**
+ * post请求传输json数据
+ *
+ * @param url
+ * @param json
+ * @param encoding
+ * @return
+ * @throws ClientProtocolException
+ * @throws IOException
+ */
+@Throws(ClientProtocolException::class, IOException::class)
+private fun http(method: HttpRequestBase, url: String, data: Any,cType:ContentType, encoding: String="utf-8",head:Array<Pair<String,String>>?=null): String {
 
     var result = ""
 
@@ -90,11 +115,36 @@ private fun http(method: HttpRequestBase, url: String, json: String, encoding: S
     // 创建post方式请求对象
     method.uri= URI.create(url)
 
-    // 设置参数到请求对象中
-    val stringEntity = StringEntity(json, ContentType.APPLICATION_JSON)
-    stringEntity.setContentEncoding(encoding)
+    head?.forEach {
+        it?.apply {
+            method.setHeader(this.first,this.second)
+        }
+    }
+
+    val entity: AbstractHttpEntity =when(cType){
+        ContentType.APPLICATION_FORM_URLENCODED->{
+            val nameValuePairs = ArrayList<NameValuePair>()
+            if (data != null) {
+                if(data is Map<*,*>)
+                for ((key, value) in data) {
+                    nameValuePairs.add(BasicNameValuePair(key.toString(), value.toString()))
+                }
+            }
+            UrlEncodedFormEntity(nameValuePairs, encoding)
+        }
+        ContentType.DEFAULT_BINARY->{
+            ByteArrayEntity(data as ByteArray,cType)
+        }
+        else->{
+            StringEntity(data.toString(), cType).apply {
+                this.setContentEncoding(encoding)
+            }
+
+        }
+    }
+
     if(method is HttpEntityEnclosingRequestBase)
-    method.entity = stringEntity
+        method.entity = entity
 
     // 执行请求操作，并拿到结果（同步阻塞）
     val response = httpClient.execute(method)
@@ -150,9 +200,16 @@ fun httpPostJson(url: String,obj: Any, encoding: String="utf-8"): String {
     return http(HttpPost(),url, JSON.toJSONString(obj),encoding)
 }
 
+fun httpPost(url: String,obj: Any, cType:ContentType=ContentType.DEFAULT_TEXT,encoding: String="utf-8",head:Array<Pair<String,String>>?=null): String {
+
+    return http(HttpPost(),url, obj,cType,encoding,head)
+}
+
 fun httpPutJson(url: String, obj: Any, encoding: String="utf-8"): String {
     return http(HttpPut(),url,JSON.toJSONString(obj),encoding)
 }
+
+
 
 fun httpDeleteJson(url: String,obj: Any, encoding: String="utf-8"): String {
     return http(HttpDelete(),url,JSON.toJSONString(obj),encoding)
